@@ -1,369 +1,261 @@
-# Pestras Micros
+# Pestras Micro Router
 
-**Pestras Microservice** as **PMS** is built on nodejs framework using typescript, supporting nodejs cluster with messageing made easy between workers.
+Pestres microservice plugin for rest services support
 
 Although **PMS** is almost empty of features, its strength comes handy through its plugins.
 
-## Official Plugins
+## install
 
-* **@pestras/micro-router**: Adds support for HTTP Rest services with very handfull routing feature.
-* **@pestras/micro-socket.io**: Adds support for SocketIO connection with plenty of usefull decorators.
-* **@pestras/micro-nats**: Adds support for Nats Server messaging system.
-* **@pestras/micro-rabbitmq**: Adds support for RabbitMQ messaging system - *in development*.
+```bash
+npm i @pestras/micro @pestras/micro-router
+```
 
-# Template
+## Template
 
 ```bash
 $ git clone https://github.com/pestras/pestras-micro-template
 ```
 
-## Creating Service
-
-In order to create our service we need to use **SERVICE** decorator which holds the main configuration of our service class.
+## Plug In
 
 ```ts
-import { SERVICE } from '@pestras/microservice';
+import { SERVICE, Micro } from '@pestras/micro';
+import { MicroRouter } from '@pestras/micro-router;
 
-@SERVICE({ version: 1 })
-class Test {}
+Micro.plugin(new MicroRouter());
+
+@SERVICE()
+class test {}
+
+Micro.start(Test);
 ```
 
-### Service Configurations
+**MicroRouter** class accepts a single optional argument **cors**.
 
-Name        | Type     | Defualt         | Description
-----        | -----    | ------          | -----
-version     | number   | 0               | Current verion of our service, versions are used on rest resource */someservice/v1/...*.
-kebabCase   | boolean  | true            | convert class name to kebekCasing as *ArticlesQueryAPI* -> *articles-query-api*
-port        | number   | 3000            | Http server listening port.   
-host        | string   | 0.0.0.0         | Http server host.
-workers     | number   | 0               | Number of node workers to run, if assigned to minus value will take max number of workers depending on os max cpus number
-logLevel    | LOGLEVEL | LOGLEVEL.INFO   |
-tranferLog  | boolean  | false           | Allow logger to transfer logs to the service **onLog** method
-exitOnUnhandledException | boolean | true |
-exitOnUnhandledRejection | boolean | true |
-cors | IncomingHttpHeaders & { 'success-code'?: string } | [see cors](#cors) | CORS for preflights requests
-
-#### LOGLEVEL Enum
-
-**PMS** provides only four levels of logs grouped in an enum type **LOGLEVEL**
-
-- LOGLEVEL.ERROR
-- LOGLEVEL.WARN
-- LOGLEVEL.INFO
-- LOGLEVEL.DEBUG
-
-### Cors
-
-**PM** default cors options are:
+Default cors options are:
 
 ```
 'access-control-allow-methods': "GET,HEAD,OPTIONS,PUT,PATCH,POST,DELETE",
 'access-control-allow-origin': "*",
 'access-control-allow-headers': "*",
 'Access-Control-Allow-Credentials': 'false',
-'response-code': '204'
+'success-code': '204'
 ```
 
-To change that, overwrite new values into cors options
+## ROUTE DECORATOR
+
+Used to define a route for a rest service.
+
+**ROUTE** accepts an optional config object to configure our route.
+
+Name | type | Default | Description
+--- | --- | --- | --- 
+name | string | Method name applied to | name of the route
+path | string | '/' | Service path pattern
+method | HttpMethod | 'GET' | 
+accepts | string | 'application/json' | shortcut for 'Content-Type' header
+hooks | string[] | [] | hooks methods that should be called before the route handler
+bodyQuota | number | 1024 * 100 | Request body size limit
+queryLength | number | 100 | Request query characters length limit
+timeout | number | 15000 | Max time to handle the request before canceling
+cors | IncomingHttpHeaders & { 'success-code'?: string } | null | CORS for preflights requests
 
 ```ts
+import { SERVICE, ROUTE } from '@pestras/microservice';
+
 @SERVICE({
-  version: 1,
-  cors: {
-    'access-control-allow-methods': "GET,PUT,POST,DELETE",
-    'access-control-allow-headers': "content-type"
+  version: 1
+})
+class Articles {
+
+  @ROUTE({
+    // /articles/v1/{id}
+    path: '/{id}'
+  })
+  getArticle(req: Request, res: Response) {
+    let id = req.params.id;
+
+    // get article code
+
+    res.json(article);
   }
-})
-class Test {}
+}
 ```
 
-## Micro
+### Request
 
-Before delving into service routes, subjects.. etc, let's find out how to run our service..
+**PMS** http request holds the original Node IncomingMessage with a few extra properties.
 
-After defining our service class we use the **Micro** object to run our service through the *start* method.
+Name | Type | Description
+--- | --- | ---
+url | URL | URL extends Node URL class with some few properties, most used one is *query*.
+params | { [key: string]: string \| string[] } | includes route path params values.
+body | any |
+auth | any | useful to save some auth value passed from 'auth' hook for instance.
+headers | IncomingHttpHeaders | return all current request headers.
+header | (key: string) => string | method to get specific request header value
+locals | Object | to set any additional data passed between hooks and route handler
+msg | NodeJS.IncomingMessage | 
+
+### Request Path Patterns
+
+**PM** path patterns are very useful that helps match specific cases
+
+1. **/articles/{id}** - *id* is a param name that match any value: */articles/4384545* or */articles/45geeFEe8* but not */articles* or */articles/dsfge03tG9/1*
+
+2. **/articles/{id}?** - same the previous one but id params is optional, so */articles* is acceptable.
+
+3. **/articles/{cat}/{start}?/{limit}?** - cat params is required, however start and limit are optionals,
+*/articles/scifi*, */articles/scifi/0*, */articles/scifi/0/10* all matched
+
+4. **/articles/{id:^[0-9]{10}$}** - id param is constrained with a regex that allow only number value with 10 digits length only.
+
+5. **/articles/*** - this route has rest operator which holds the values of the rest blocks of the path separated by '/' as an array,
+*articles/scifi/0/10* does match and **request.params['\*']** equals ['scifi','0','10'], however */articles* does not match
+
+6. **/articles/\*?** - same as the previous however */articles* does match
+
+#### notes:
+
+- Rest operator accepts preceding parameter but not optional parameters.
+- Adding flags to regexp would be */articles/{id:[a-z]{10}**:i**}*.
+- Parameters with Regexp can be optional as will */articles/{id:[a-z]{10}**:i**}?*
+- Parameters can be seperated by fixed value blocks */articles/{aid}/comments/{cid}*
+- Parameters and rest operator can be seperated by fixed value blocks as well.
+- On each request, routes are checked in two steps to enhance performance
+  - Perfect match: Looks for the perfect match (case sensetive).
+  - By Order: if first step fail, then routes are checked by order they were defined (case insensetive)
 
 ```ts
-import { SERVICE, Micro } from '@pestras/microservice';
+@SERVICE()
+class AticlesQuery {
+  // first to check
+  @ROUTE({ path: '/{id}'})
+  getById() {}
+  
+  // second to check
+  @ROUTE({ path: '/published' })
+  getPublished() {}
+  
+  /**
+   * Later when an incomimg reauest made including pathname as: 'articles-query/v0/Published' with capitalized P
+   * first route to match is '/{id}',
+   * However when the path name is 'articles-query/v0/published' with lowercased p '/published' as the defined route then
+   * the first route to match is '/published' instead of '/{id}'
+   */
+}
+```
 
-@SERVICE({
-  // service config
-})
-export class TEST {}
+### Response
+
+**PMS** http response holds the original Node Server Response with a couple of methods.
+
+Name | Type | Description
+--- | --- | ---
+json | (data?: any) => void | Used to send json data.
+status | (code: number) => Response | Used to set response status code.
+type | (contentType: string) => void | assign content-type response header value.
+end | any | Overwrites orignal end method *recommended to use*
+setHeaders | (headers: { [key: string]: string \| string[] \| number }) => void | set multiple headers at once
+http | NodeJS.ServerResponse | 
+
+Using response.json() will set 'content-type' response header to 'application/json'.
+**Response** will log any 500 family errors automatically.
+
+#### Response Security headers
+
+**PM** add additional response headers for more secure environment as follows:
+
+```
+'Cache-Control': 'no-cache,no-store,max-age=0,must-revalidate'
+'Pragma': 'no-cache'
+'Expires': '-1'
+'X-XSS-Protection': '1;mode=block'
+'X-Frame-Options': 'DENY'
+'Content-Security-Policy': "script-src 'self'"
+'X-Content-Type-Options': 'nosniff'
+```
+
+Headers can be overwritten using **response.setHeaders** method.
+
+## ROUTER_HOOK DECORATOR
+
+Hooks are called before the actual request handler, they are helpful for code separation like auth, input validation or whatever logic needed, they could be sync or async returning boolean value.
+
+```ts
+import { Micro, SERVICE, Request, Response, ROUTER_HOOK, ROUTE, CODES } from '@pestras/microservice';
+
+@SERVICE()
+class Test {
+  @ROUTER_HOOK()
+  async auth(req: Request, res: Response, handlerName: string) {
+    const user: User;
+  
+    // some auth code
+    // ...
+
+    if (!user) {
+      res.status(CODES.UNAUTHORIZED).json({ msg: 'user not authorized' });
+      return false;
+    }
+  
+    req.auth = user;
+    return true
+  }
+
+  @ROUTE({ hooks: ['auth'] })
+  handlerName(req: Request, res: Response) {
+    const user = req.auth;
+  }
+}
 
 Micro.start(Test);
 ```
 
-**Micro.start** method accepts additionl optional arguments that will be passed to service constructor in order
+Hooks should handle the response on failure and returning or resolving to false, otherwise **Route** will check response status and if its not ended, it will consider the situation as a bad request from client that did not pass the hook and responding with BAD_REQUEST code 400.
 
-```ts
-import { SERVICE, Micro } from '@pestras/microservice';
-import { config } from './config'; 
+## Router Events
 
-@SERVICE({
-  // service config
-})
-export class TEST {
-  constructor(config: MyConf) {
-    // handle configurations
-  }
-}
+### onRequest
 
-Micro.start(Test, config);
-```
-
-**Micro** object has another properties and methods that indeed we are going to use as well later in the service.
-
-Name | Type | Description
---- | --- | ---
-status | MICRO_STATUS | INIT \| EXIT\| LIVE
-logger | Logger | Micro logger instance
-message | (msg: string, data: WorkerMessage, target: 'all' \| 'others') => void | A helper method to broadcast a message between workers
-exit | (code: number = 0, signal: NodeJs.Signal = "SIGTERM") => void | Used to stop service
-plugin | (plugin: MicroPlugin) => void | The only way to inject plugins to our service
-
-
-# Cluster
-
-**PMS** uses node built in cluster api, and made it easy for us to manage workers communications.
-
-First of all to enable clustering we should set workers number in our service configurations to some value greater than one.
-
-```ts
-import { SERVICE, WORKER_MSG } from '@pestras/microservice';
-
-@SERVICE({ workers: 4 })
-class Publisher {}
-```
-
-To listen for a message form another process.
-
-```ts
-import { SERVICE, MSG } from '@pestras/microservice';
-
-@SERVICE({ workers: 4 })
-class Publisher {
-
-  @WORKER_MSG('some message')
-  onSomeMessage(data: any) {}
-}
-```
-
-To send a message to other processes we need to use *Micro.message* method, it accepts three parameters.
-
-Name | Type | Required | Default | Description
---- | --- | ---- | --- | ---
-message | string | true | - | Message name
-data | any | false | null | Message payload
-target | 'all' \| 'others' | false | 'others' | If we need the same worker to receive the message as well.
-
-```ts
-import { SERVICE, Micro } from '@pestras/microservice';
-
-@SERVICE({ workers: 4 })
-class Publisher {
-  
-  // some where in your service
-  Micro.message('some message', { key: 'value' });
-}
-```
-
-# Lifecycle & Events Methods
-
-**PMS** will try to call some service methods in specific time or action if they were already defined in our service.
-
-## onInit
-
-When defined, will be called once our service is instantiated but nothing else, this method is useful when
-we need to connect to a databese or to make some async operations before start listening one events or http requests.
-
-It can return a promise or nothing.
-
-```ts
-import { SERVICE, ServiceEvents } from '@pestras/microservice';
-
-@SERVICE({ workers: 4 })
-class Publisher implements ServiceEvents {
-
-  async onInit() {
-    // connect to a databese
-  }
-}
-```
-
-## onReady
-
-This method is called once all our listeners are ready.
-
-```ts
-import { SERVICE, ServiceEvents } from '@pestras/microservice';
-
-@SERVICE({ workers: 4 })
-class Publisher implements ServiceEvents {
-
-  onReay() {}
-}
-```
-
-## onExit
-
-Called once our service is stopped when calling **Micro.exit()** or when any of termination signals are triggerred *SIGTERM, SIGINT, SIGHUP*, 
-
-Exit code with the signal are passed as arguments.
-
-```ts
-import { SERVICE, ServiceEvents } from '@pestras/microservice';
-
-@SERVICE({ workers: 4 })
-class Publisher implements ServiceEvents {
-
-  onExit(code: number, signal: NodeJS.Signals) {
-    // disconnecting from the databese
-  }
-}
-```
-
-## OnLog
-
-**PMS** has a built in lightweight logger that logs everything to the console.
-
-In order to change that behavior we can define **onLog** event method in our service and **PMS** will detect that method and will transfer all logs to it, besides enabling **transferLog**
-options in service config.
-
-```ts
-import { SERVICE, SUBJECT, Micro, ServiceEvents } from '@pestras/microservice';
-
-@SERVICE({
-  version: 1
-  transferLog: process.env.NODE_ENV === 'production'
-})
-class Test implements ServiceEvents {
-
-  onLog(level: LOGLEVEL, msg: any, extra: any) {
-    // what ever you code
-  }
-
-  onExit(code: number, signal: NodeJS.Signals) {
-    Micro.logger.warn('exiting service');
-  }
-}
-```
-
-## onHealthcheck
-
-An event triggered for docker swarm healthcheck.
+Called whenever a new http request is received, passing the Request and Response instances as arguments, it can return a promise or nothing;
 
 ```ts
 @SERVICE()
 class Publisher implements ServiceEvents {
 
-  // http: GET /healthcheck
-  async onHealthcheck(res: Response) {
-    // check for database connection
-    if (dbConnected) res.status(200).end();
-    else res.status(500).end()
-  }
+  async onRequest(req: Request, res: Response) { }
 }
 ```
 
-## onReadycheck
+This event method is called before checking if there is a matched route or not.
 
-An event triggered for kubernetes ready check.
+## on404
+
+Called whenever http request has no route handler found.
 
 ```ts
 @SERVICE()
 class Publisher implements ServiceEvents {
 
-  // http: GET /readiness
-  async onReadycheck(res: Response) {
-    // check for database connection
-    if (dbConnected) res.status(200).end();
-    else res.status(500).end()
+  on404(req: Request, res: Response) {
+
   }
 }
 ```
 
-## onLivecheck
+When implemented response should be implemented as well
 
-An event triggered for kubernetes live check.
+## onRouteError
 
-```ts
-@SERVICE()
-class Publisher implements ServiceEvents {
-
-  // http: GET /liveness
-  async onLivecheck(res: Response) {
-    // check for database connection
-    if (dbConnected) res.status(200).end();
-    else res.status(500).end()
-  }
-}
-```
-
-## onHTTPMsg
-
-Called whenever a new http request is received, passing the Request and Response instances as arguments;
-
-```ts
-import { IncomingMessage, ServerResponse } from 'http;
-@SERVICE()
-class Publisher implements ServiceEvents {
-
-  async onHTTPMsg(req: IncomingMessage, res: ServerResponse) { }
-}
-```
-
-**Note:** onHttpMsg event could be used by plugins as well, however the restiction is that only consumer can utilize this event others will be ignored,
-service instance has the top priority on this one.
-
-## onUnhandledRejection
-
-Defining this handler will cancel **exitOnUnhandledRejection** option in service config, so you need to exit manually if it needs to be.
+Called whenever an error accured when handling an http request, passing the Request and Response instances and the error as arguments.
 
 ```ts
 @SERVICE({ workers: 4 })
 class Publisher implements ServiceEvents {
 
-  onUnhandledRejection(reason: any, p: Promise<any>) {
-    // do somethig with the error and then maybe exit
-    // calling Micro.exit() will trigger onExit EventHandler
-    Micro.exit(1);
-  }
+  onRouteError(req: Request, res: Response, err: any) { }
 }
 ```
-
-## onUnhandledException
-
-Defining this handler will cancel **exitOnUnhandledException** option in service config, so you need to exit manually if it needs to be.
-
-```ts
-@SERVICE({ workers: 4 })
-class Publisher implements ServiceEvents {
-
-  onUnhandledException(err: any) {
-    // do somethig with the error and then maybe exit
-    // calling Micro.exit() will trigger onExit EventHandler
-    Micro.exit(1);
-  }
-}
-```
-
-# Health Check
-
-For health check in Dockerfile or docker-compose
-
-```Dockerfile
-HEALTHCHECK --interval=1m30s --timeout=2s --start_period=10s CMD node ./node_modules/@pestras/microservice/hc.js /articles/v0 3000
-```
-
-```yml
-healthcheck:
-  test: ["CMD", "node", "./node_modules/@pestras/microservice/hc.js", "/articles/v0", "3000"]
-  interval: 1m30s
-  timeout: 10s
-  retries: 3
-  start_period: 40s
-```
-Root path is required as the first parameter, while port defaults to 3000.
 
 Thank you
