@@ -1,8 +1,6 @@
 # Pestras Micro Router
 
-Pestres microservice plugin for rest services support
-
-Although **PMS** is almost empty of features, its strength comes handy through its plugins.
+Pestras microservice plugin for rest services support
 
 ## install
 
@@ -61,7 +59,8 @@ timeout | number | 15000 | Max time to handle the request before canceling
 cors | IncomingHttpHeaders & { 'success-code'?: string } | null | CORS for preflights requests
 
 ```ts
-import { SERVICE, ROUTE } from '@pestras/microservice';
+import { Micro, SERVICE, CODES } from '@pestras/micro';
+import { Request, Response, ROUTER_HOOK, ROUTE } from '@pestras/micro-router';
 
 @SERVICE({
   version: 1
@@ -183,7 +182,8 @@ Headers can be overwritten using **response.setHeaders** method.
 Hooks are called before the actual request handler, they are helpful for code separation like auth, input validation or whatever logic needed, they could be sync or async returning boolean value.
 
 ```ts
-import { Micro, SERVICE, Request, Response, ROUTER_HOOK, ROUTE, CODES } from '@pestras/microservice';
+import { Micro, SERVICE, CODES } from '@pestras/micro';
+import { Request, Response, ROUTER_HOOK, ROUTE } from '@pestras/micro-router';
 
 @SERVICE()
 class Test {
