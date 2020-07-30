@@ -24,16 +24,28 @@ const DEFAULT_CORS: IncomingHttpHeaders & { 'success-code'?: string } = {
  * include url and body parsing
  */
 export class Request<T = any> {
-  url: URL;
-  method: HttpMethod;
-  params: { [key: string]: string | string[] };
-  body: T;
-  auth?: any;
+  private _body: T = null;
+  private _params: { [key: string]: string | string[] } = null;
+  readonly url: URL;
+  readonly method: HttpMethod;
   readonly locals: { [key: string]: any } = {};
+  auth?: any;
 
   constructor(public readonly msg: IncomingMessage) {
     this.url = new URL('http://' + this.msg.headers.host + this.msg.url);
     this.method = <HttpMethod>this.msg.method.toUpperCase();
+  }
+
+  get body() { return this._body; }
+  set body(value: T) {
+    if (!this._body) this._body = value;
+    else throw "unable to reassign request body";
+  }
+
+  get params() { return this._params; }
+  set params(value: { [key: string]: string | string[] }) {
+    if (!this._params) this._params = value;
+    else throw "unable to reassign request params";
   }
 
   header(key: string) { return this.msg.headers[key.toLowerCase()]; }
@@ -50,6 +62,7 @@ export interface RouteConfig {
   accepts?: string;
   hooks?: string[];
   bodyQuota?: number;
+  processBody?: boolean;
   queryLength?: number;
   timeout?: number;
   cors?: CORS;
@@ -102,24 +115,15 @@ export function ROUTE_HOOK() {
  * 
  * @param HTTPMsg IncomingMessage
  */
-function createRequest(httpMsg: IncomingMessage): Promise<Request> {
-  let request = new Request(httpMsg);
-
+function processBody(http: IncomingMessage): Promise<any> {
   return new Promise((res, rej) => {
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1) {
-      let payload: Uint8Array[] = [];
-      request.msg.on("data", data => {
-        payload.push(data);
-      }).on('end', () => {
-        request.body = Buffer.concat(payload).toString();
-        res(request);
-      }).on("error", err => {
-        Micro.logger.error(err, { request });
+    let payload: Uint8Array[] = [];
+    http.on("data", data => payload.push(data))
+      .on('end', () => res(Buffer.concat(payload).toString()))
+      .on("error", err => {
+        Micro.logger.error(err);
         rej(err);
       });
-    } else {
-      res(request);
-    }
   });
 }
 
@@ -217,6 +221,7 @@ export class MicroRouter extends MicroPlugin {
         accepts: config.accepts || 'application/json; charset=utf-8',
         hooks: config.hooks || [],
         bodyQuota: config.bodyQuota || 1024 * 100,
+        processBody: config.processBody === false ? false : true,
         queryLength: config.queryLength || 100,
         timeout: (!config.timeout || config.timeout < 0) ? 1000 * 15 : config.timeout,
         key: config.key
@@ -233,7 +238,7 @@ export class MicroRouter extends MicroPlugin {
   }
 
   async onHTTPMsg(httpMsg: IncomingMessage, httpRes: ServerResponse) {
-    let request = await createRequest(httpMsg);
+    let request = new Request(httpMsg);
     let response = new Response(request, httpRes, this.cors);
     let timer: NodeJS.Timeout = null;
 
@@ -279,21 +284,24 @@ export class MicroRouter extends MicroPlugin {
     if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
       return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
 
-    // validate request body type
-    if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1) {
-      if (!!request.body) {
-        if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1) return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1 && +request.msg.headers['content-length'] > 0) {
+      // validate reeuest body size
+      if (route.bodyQuota > 0 && route.bodyQuota < +request.msg.headers['content-length'])
+        return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
+
+      if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
+        return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
+
+      if (route.processBody) {
+        try { request.body = await processBody(request.msg); }
+        catch (e) { return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e }); }
+
         if (route.accepts.indexOf('application/json') > -1)
           try { request.body = JSON.parse(request.body); } catch (e) { return response.status(CODES.BAD_REQUEST).json(e); }
-        if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1) request.body = URL.QueryToObject(request.body);
-      } else {
-        request.body = {};
+        else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
+          request.body = URL.QueryToObject(request.body);
       }
     }
-
-    // validate reeuest body size
-    if (route.bodyQuota > 0 && route.bodyQuota < +request.msg.headers['content-length'])
-      return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
 
     // start hooks flow
     if (route.hooks && route.hooks.length > 0) {
