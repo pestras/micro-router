@@ -29,11 +29,18 @@ export class Request<T = any> {
   readonly url: URL;
   readonly method: HttpMethod;
   readonly locals: { [key: string]: any } = {};
+  readonly cookies: { [key: string]: string } = {};
   auth?: any;
 
   constructor(public readonly msg: IncomingMessage) {
     this.url = new URL('http://' + this.msg.headers.host + this.msg.url);
     this.method = <HttpMethod>this.msg.method.toUpperCase();
+
+    let rc = msg.headers.cookie;
+    rc && rc.split(';').forEach(cookie => {
+      let parts = cookie.split('=');
+      this.cookies[parts.shift().trim()] = decodeURI(parts.join("="));
+    })
   }
 
   get body() { return this._body; }
@@ -168,6 +175,14 @@ export class Response {
       for (let key in headers)
         this.serverResponse.setHeader(key, headers[key]);
 
+    return this;
+  }
+
+  cookies(pairs: {[key: string]: string}) {
+    if (!pairs) return this;
+    let all: string[] = [];
+    for (let [key, value] of Object.entries(pairs)) all.push(`${key}=${value}`);
+    this.serverResponse.setHeader('Set-Cookie', all);
     return this;
   }
 
