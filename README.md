@@ -23,7 +23,7 @@ import { MicroRouter } from '@pestras/micro-router;
 Micro.plugin(new MicroRouter());
 
 @SERVICE()
-class test {}
+class Test {}
 
 Micro.start(Test);
 ```
@@ -38,6 +38,28 @@ Default cors options are:
 'access-control-allow-headers': "*",
 'Access-Control-Allow-Credentials': 'false',
 'success-code': '204'
+```
+
+## Router Configuration
+
+Name        | Type     | Defualt         | Description
+----        | -----    | ------          | -----
+version     | string   | 0               | Current verion of our service, versions are used on rest resource */someservice/v1/...*.
+kebabCase   | boolean  | true            | convert class name to kebekCasing as *ArticlesQueryAPI* -> *articles-query-api*
+port        | number   | 3000            | Http server listening port.   
+host        | string   | 0.0.0.0         | Http server host.
+cors | IncomingHttpHeaders & { 'success-code'?: string } | [see cors](#cors) | CORS for preflights requests
+
+```ts
+import { SERVICE, Micro } from '@pestras/micro';
+import { MicroRouter } from '@pestras/micro-router;
+
+Micro.plugin(new MicroRouter({ version: "1", port: "3200" }));
+
+@SERVICE()
+class Test {}
+
+Micro.start(Test);
 ```
 
 ## ROUTE DECORATOR
@@ -60,12 +82,12 @@ timeout | number | 15000 | Max time to handle the request before canceling
 cors | IncomingHttpHeaders & { 'success-code'?: string } | null | CORS for preflights requests
 
 ```ts
-import { Micro, SERVICE, CODES } from '@pestras/micro';
-import { Request, Response, ROUTER_HOOK, ROUTE } from '@pestras/micro-router';
+import { Micro, SERVICE } from '@pestras/micro';
+import { MicroRouter, Request, Response, ROUTER_HOOK, ROUTE, CODES } from '@pestras/micro-router';
 
-@SERVICE({
-  version: 1
-})
+Micro.plugin(new MicroRouter());
+
+@SERVICE()
 class Articles {
 
   @ROUTE({
@@ -159,14 +181,14 @@ type | (contentType: string) => Response | assign content-type response header v
 end | any | Overwrites orignal end method *recommended to use*
 setHeaders | (headers: { [key: string]: string \| string[] \| number }) => Response | set multiple headers at once
 cookies | (pairs: {[key: string]: string}) => Response | set response cookies
-http | NodeJS.ServerResponse | 
+serverResponse | NodeJS.ServerResponse | 
 
 Using response.json() will set 'content-type' response header to 'application/json'.
 **Response** will log any 500 family errors automatically.
 
 #### Response Security headers
 
-**PM** add additional response headers for more secure environment as follows:
+**PMS** adds additional response headers for more secure environment as follows:
 
 ```
 'Cache-Control': 'no-cache,no-store,max-age=0,must-revalidate'
@@ -185,8 +207,10 @@ Headers can be overwritten using **response.setHeaders** method.
 Hooks are called before the actual request handler, they are helpful for code separation like auth, input validation or whatever logic needed, they could be sync or async returning boolean value.
 
 ```ts
-import { Micro, SERVICE, CODES } from '@pestras/micro';
-import { Request, Response, ROUTER_HOOK, ROUTE } from '@pestras/micro-router';
+import { Micro, SERVICE } from '@pestras/micro';
+import { MicroRouter, Request, Response, ROUTER_HOOK, ROUTE, CODES } from '@pestras/micro-router';
+
+Micro.plugin(new MicroRouter());
 
 @SERVICE()
 class Test {
@@ -216,6 +240,78 @@ Micro.start(Test);
 ```
 
 Hooks should handle the response on failure and returning or resolving to false, otherwise **Route** will check response status and if its not ended, it will consider the situation as a bad request from client that did not pass the hook and responding with BAD_REQUEST code 400.
+
+# Sub Services
+
+```ts
+// comments.service.ts
+import { ROUTE, ROUTE_HOOK, RouterEvents } from '@pestras/micro-router';
+
+export class Comments implements RouterEvents {
+
+  on404(req, res) {
+    res.json(null);
+  }
+  
+  @ROUTE_HOOK()
+  validate(req, res) { return true }
+  
+  @ROUTE({ 
+    path: '/list' // => /artivles/v0/comments/list
+    // auth hook from the main service
+    // validate from local service
+    hooks: ['auth', 'validate']
+  })
+  list(req, res) {
+    res.json([]);
+  }
+}
+```
+
+```ts
+// main.ts
+import { Micro, SERVICE } from '@pestras/micro';
+import { MicroRouter, ROUTE_HOOK, ROUTE } from '@pestras/micro-router';
+import { Comments } from './comments.service'
+
+Micro.plugin(new MicroRouter());
+
+@SERVICE()
+class Articles {
+
+  onInit() {    
+    Micro.store.someSharedValue = "shared value";
+  }
+
+  @ROUTE_HOOK()
+  async auth(req, res) {
+    return true;
+  }
+
+  @ROUTE_HOOK()
+  validate(req, res) {
+    return true;
+  }
+
+  @ROUTE({
+    path: '/list', // => articels/v0/list
+    // both hooks from the main service
+    hooks: ['auth', 'validate']
+  })
+  list(req, res) {
+    res.json([]);
+  }
+}
+
+// pass sub services as an array to the second argument of Micro.start method
+Micro.start(Articles, [Comments]);
+```
+
+Serveral notes can be observed from the example:
+
+* Routes paths in sub services are prefixed with the sub service name.
+* Local hooks has the priority over main service hooks.
+* Subservices have their own router events.
 
 ## Router Events
 
