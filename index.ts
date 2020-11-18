@@ -16,10 +16,12 @@ export interface RouterConfig {
   port?: number;
   host?: string;
   kebabCase?: boolean;
+  ignoredRoutes?: [string, string][];
   cors?: CORS;
 }
 
 export interface RouterEvents {
+  onListening?: () => void;
   onRequest?: (req: Request, res: Response) => void;
   on404?: (req: Request, res: Response) => void;
   onRouteError?: (req: Request, res: Response, err: any) => void;
@@ -242,6 +244,7 @@ function toKebabCasing(name: string) {
 
 export class MicroRouter extends MicroPlugin {
   private _config: RouterConfig & { name: string };
+  static server: http.Server;
 
   constructor(config?: RouterConfig) {
     super();
@@ -252,9 +255,29 @@ export class MicroRouter extends MicroPlugin {
     this._config.port = this._config.port || 3000;
     this._config.host = this._config.host || "0.0.0.0";
     this._config.cors = Object.assign(this._config.cors || {}, DEFAULT_CORS);
+    if (this._config.ignoredRoutes) {
+      for (let route of this._config.ignoredRoutes)
+        route[0] = route[0].includes('*') ? '*' : route[0].replace(/\s?/g, '').toUpperCase();
+    } else this._config.ignoredRoutes || [];
+
+    Micro.store.MicroRouterPlugin = <any>{};
+  }
+
+  private shallBeIgnored(url: URL, method: HttpMethod) {
+    let pathname = PathPattern.Clean(url.pathname);
+
+    for (let route of this._config.ignoredRoutes) {
+      if (route[0] !== '*' && !route[0].includes(method)) continue;
+      let pathPattern = new PathPattern(route[1]);
+      if (pathPattern.match(pathname)) return true;
+    }
+
+    return false;
   }
 
   init() {
+    if (MicroRouter.server) return;
+    
     Micro.logger.info('initializing Http server');
     let rootPath = URL.Clean(this._config.name + '/v' + this._config.version);
     for (let config of serviceRoutesRepo) {
@@ -309,6 +332,11 @@ export class MicroRouter extends MicroPlugin {
         if (typeof Micro.service.onRequest === "function") {
           let ret = Micro.service.onRequest(request, response);
           if (ret && ret.then !== undefined) await ret;
+        }
+
+        if (this.shallBeIgnored(request.url, request.method)) {
+          Micro.logger.info(`route ignored: ${request.method} ${request.url.pathname}`);
+          return;
         }
 
         let { route, params } = findRoute(request.url, request.method);
@@ -427,8 +455,16 @@ export class MicroRouter extends MicroPlugin {
       }
     });
 
+    MicroRouter.server = server;
     Micro.logger.info('http server initialized successfully');
 
-    server.listen(this._config.port, this._config.host, () => Micro.logger.info(`running http server on port: ${this._config.port}, pid: ${process.pid}`))
+    server.listen(this._config.port, this._config.host, () => {
+      Micro.logger.info(`running http server on port: ${this._config.port}, pid: ${process.pid}`);
+
+      if (typeof Micro.service.onListening === "function") Micro.service.onListening();
+
+      for (let service of Micro.subServices)
+        if (typeof service.onListening === "function") service.onListening();
+    });
   }
 }

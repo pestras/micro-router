@@ -49,6 +49,7 @@ kebabCase   | boolean  | true            | convert class name to kebekCasing as 
 port        | number   | 3000            | Http server listening port.   
 host        | string   | 0.0.0.0         | Http server host.
 cors | IncomingHttpHeaders & { 'success-code'?: string } | [see cors](#cors) | CORS for preflights requests
+ignoredRoutes | [string, string][] | [] | list of routes **[comma separated http methods or use '*', pathPattern]** that should be completely ignored by the plugin
 
 ```ts
 import { SERVICE, Micro } from '@pestras/micro';
@@ -314,6 +315,20 @@ Serveral notes can be observed from the example:
 * Subservices have their own router events.
 
 ## Router Events
+
+### onListening
+
+Called the http server starts listening.
+
+```ts
+@SERVICE()
+class Publisher implements ServiceEvents {
+
+  async onListening() { }
+}
+```
+
+Also RouterPlugin adds a reference to the server instance *MicroRouter.server*;
 
 ### onRequest
 
