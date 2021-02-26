@@ -266,18 +266,19 @@ export class MicroRouter extends MicroPlugin {
   private shallBeIgnored(url: URL, method: HttpMethod) {
     let pathname = PathPattern.Clean(url.pathname);
 
-    for (let route of this._config.ignoredRoutes) {
-      if (route[0] !== '*' && !route[0].includes(method)) continue;
-      let pathPattern = new PathPattern(route[1]);
-      if (pathPattern.match(pathname)) return true;
-    }
+    if (this._config.ignoredRoutes?.length > 0)
+      for (let route of this._config.ignoredRoutes) {
+        if (route[0] !== '*' && !route[0].includes(method)) continue;
+        let pathPattern = new PathPattern(route[1]);
+        if (pathPattern.match(pathname)) return true;
+      }
 
     return false;
   }
 
   init() {
     if (MicroRouter.server) return;
-    
+
     Micro.logger.info('initializing Http server');
     let rootPath = URL.Clean(this._config.name + '/v' + this._config.version);
     for (let config of serviceRoutesRepo) {
