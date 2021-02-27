@@ -246,6 +246,8 @@ export class MicroRouter extends MicroPlugin {
   private _config: RouterConfig & { name: string };
   static server: http.Server;
 
+  healthy = true;
+
   constructor(config?: RouterConfig) {
     super();
 
@@ -349,24 +351,6 @@ export class MicroRouter extends MicroPlugin {
 
         if (route.cors) response.setHeaders(route.cors);
 
-        // healthcheck event
-        if (route.name === 'healthcheck' && request.method === 'GET') {
-          if (typeof Micro.service.onHealthcheck === "function") return Micro.service.onHealthcheck(response);
-          else return response.status(200).end();
-        }
-
-        // readiness event
-        if (route.name === 'readiness' && request.method === 'GET') {
-          if (typeof Micro.service.onReadycheck === "function") return Micro.service.onReadycheck(response);
-          else return response.status(200).end();
-        }
-
-        // liveness event
-        if (route.name === 'liveness' && request.method === 'GET') {
-          if (typeof Micro.service.onLivecheck === "function") return Micro.service.onLivecheck(response);
-          else return response.status(200).end();
-        }
-
         let currentService = route.service;
 
         if (currentService !== Micro.service && typeof currentService.onRequest === "function") {
@@ -467,5 +451,8 @@ export class MicroRouter extends MicroPlugin {
       for (let service of Micro.subServices)
         if (typeof service.onListening === "function") service.onListening();
     });
+
+    this.ready = true;
+    this.live = true;
   }
 }
