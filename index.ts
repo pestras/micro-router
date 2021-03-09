@@ -252,7 +252,6 @@ export class MicroRouter extends MicroPlugin {
     super();
 
     this._config = config || <any>{};
-    this._config.name = this._config.kebabCase === false ? this.constructor.name.toLowerCase() : toKebabCasing(this.constructor.name).toLowerCase();
     this._config.version = this._config.version || "1";
     this._config.port = this._config.port || 3000;
     this._config.host = this._config.host || "0.0.0.0";
@@ -282,7 +281,7 @@ export class MicroRouter extends MicroPlugin {
     if (MicroRouter.server) return;
 
     Micro.logger.info('initializing Http server');
-    let rootPath = URL.Clean(this._config.name + '/v' + this._config.version);
+    let rootPath = URL.Clean((this._config.kebabCase ? toKebabCasing(Micro.service.constructor.name) : Micro.service.constructor.name as string).toLowerCase() + '/v' + this._config.version);
     for (let config of serviceRoutesRepo) {
       let currService = Micro.getCurrentService(config.service) || Micro.service;
       let pathPrefix = '';
