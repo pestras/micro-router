@@ -139,7 +139,7 @@ msg | NodeJS.IncomingMessage |
 
 6. **/articles/\*?** - same as the previous however */articles* does match
 
-#### notes:
+#### **notes**:
 
 - Rest operator accepts preceding parameter but not optional parameters.
 - Adding flags to regexp would be */articles/{id:[a-z]{10}**:i**}*.
@@ -181,13 +181,25 @@ status | (code: number) => Response | Used to set response status code.
 type | (contentType: string) => Response | assign content-type response header value.
 end | any | Overwrites orignal end method *recommended to use*
 setHeaders | (headers: { [key: string]: string \| string[] \| number }) => Response | set multiple headers at once
-cookies | (pairs: {[key: string]: string}) => Response | set response cookies
+cookies | (pairs: {[key: string]: string \| { value: string, options: CookieOptions } }) => Response | set response cookies
 serverResponse | NodeJS.ServerResponse | 
+redirect | (path: string, code: number) => void |
+sendFile | (filePath) => void | creates read stream and pipes it to the response.
 
 Using response.json() will set 'content-type' response header to 'application/json'.
 **Response** will log any 500 family errors automatically.
 
-#### Response Security headers
+#### **CookieOptions Interface**:
+
+* Expires: string
+* Max-Age: string
+* Secure: boolean
+* HttpOnly: boolean
+* Path: string
+* Domain: string
+* SameSilte: "Strict" | "Lax" | "None"
+
+#### ******Response Security headers**:
 
 **PMS** adds additional response headers for more secure environment as follows:
 

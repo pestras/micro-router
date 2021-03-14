@@ -4,12 +4,23 @@ import { IncomingMessage, ServerResponse, IncomingHttpHeaders } from 'http';
 import { URL } from '@pestras/toolbox/url';
 import { PathPattern } from '@pestras/toolbox/url/path-pattern';
 import { CODES } from '@pestras/toolbox/fetch/codes';
+import { statSync, createReadStream } from 'fs';
 
 export { CODES };
 
 export type CORS = IncomingHttpHeaders & { 'response-code'?: string };
 
 export type HttpMethod = 'HEAD' | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+export interface CookieOptions {
+  Expires: string;
+  "Max-Age": string;
+  Secure: boolean;
+  HttpOnly: boolean;
+  Domain: string;
+  Path: string;
+  SameSite: "Strict" | "Lax" | "None";
+}
 
 export interface RouterConfig {
   version?: string;
@@ -194,10 +205,24 @@ export class Response {
     return this;
   }
 
-  cookies(pairs: { [key: string]: string }) {
+  cookies(pairs: { [key: string]: string | { value: string; options: Partial<CookieOptions> } }) {
     if (!pairs) return this;
     let all: string[] = [];
-    for (let [key, value] of Object.entries(pairs)) all.push(`${key}=${value}`);
+    for (let [key, value] of Object.entries(pairs)) {
+      if (typeof value === "string") all.push(`${key}=${value}`);
+      else {
+        let cookie = `${key}=${value.value}`;
+
+        for (let optionName in value.options) {
+          let option = value.options[optionName as keyof CookieOptions];
+          if (typeof option === "boolean" && option) cookie += `; ${optionName}`;
+          else cookie += `; ${optionName}=${option}`;
+
+          all.push(cookie);
+        }
+      }
+    }
+    
     this.serverResponse.setHeader('Set-Cookie', all);
     return this;
   }
@@ -210,6 +235,24 @@ export class Response {
   status(code: CODES) {
     this.serverResponse.statusCode = code;
     return this;
+  }
+
+  redirect(url: string, code = CODES.MULTIPLE_CHOICES) {
+    this.serverResponse.statusCode = code;
+    this.serverResponse.setHeader("Location", url);
+    this.end();
+  }
+
+  sendFile(path: string, mime: string) {
+    let stat = statSync(path);
+
+    this.serverResponse.writeHead(CODES.OK, {
+      "Content_Type": mime,
+      "Content-Length": stat.size 
+    });
+
+    let readStream = createReadStream(path);
+    readStream.pipe(this.serverResponse);
   }
 }
 
@@ -370,12 +413,12 @@ export class MicroRouter extends MicroPlugin {
 
         let queryStr = request.url.href.split('?')[1];
         if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
-          return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
+          return response.status(CODES.PAYLOAD_TOO_LARGE).end('request query exceeded length limit');
 
         if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1 && +request.msg.headers['content-length'] > 0) {
           // validate request body size
           if (route.bodyQuota > 0 && route.bodyQuota < +request.msg.headers['content-length'])
-            return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
+            return response.status(CODES.PAYLOAD_TOO_LARGE).end('request body exceeded size limit');
 
           if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
             return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
