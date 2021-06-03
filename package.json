@@ -34,6 +34,6 @@
     "typescript": "^3.9.6"
   },
   "dependencies": {
-    "@pestras/toolbox": "^1.1.11"
+    "@pestras/toolbox": "^1.1.13"
   }
 }
