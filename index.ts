@@ -187,7 +187,7 @@ export class Response {
   end(chunck?: any | (() => void), encoding?: string | (() => void), cb?: () => void) {
     if (this._ended) return Micro.logger.warn('http response already sent');
     if (this.serverResponse.statusCode < 500) Micro.logger.info(`response ${this.serverResponse.statusCode} ${this.request.url.pathname}`);
-    else Micro.logger.error(`response ${this.serverResponse.statusCode} ${this.request.url}`);
+    else Micro.logger.error(new Error(`response ${this.serverResponse.statusCode} ${this.request.url}`));
     this._ended = true;
     this.serverResponse.end(...arguments);
   }
@@ -368,7 +368,7 @@ export class MicroRouter extends MicroPlugin {
         Micro.logger.info(`${request.method} ${request.url.pathname}`);
 
         response.serverResponse.on("error", err => {
-          Micro.logger.error(err, { method: request.method });
+          Micro.logger.error(err, `method: ${request.method}`);
           if (typeof Micro.service.onRouteError === "function") Micro.service.onError(request, response, err);
         });
 
@@ -470,13 +470,13 @@ export class MicroRouter extends MicroPlugin {
               }
             }
           } catch (e) {
-            Micro.logger.error('hook unhandled error: ' + currHook, e);
+            Micro.logger.error(e, 'hook unhandled error: ' + currHook);
             response.status(CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
           }
         }
 
         try { currentService[route.key](request, response); }
-        catch (e) { Micro.logger.error(e, { route: route.key }); }
+        catch (e) { Micro.logger.error(e, `route: ${route.key}`); }
       } catch (error) {
         Micro.logger.error(error);
       }
