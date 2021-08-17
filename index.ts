@@ -95,16 +95,6 @@ export function ROUTE(config: RouteConfig = {}) {
   }
 }
 
-/** Hooks Repo */
-const hooksRepo: string[] = [];
-
-/** Hook Decorator */
-export function ROUTE_HOOK() {
-  return (target: any, key: string) => {
-    hooksRepo.push(key);
-  }
-}
-
 /**
  * Request wrapper for original node incoming message
  * include url and body parsing
@@ -325,6 +315,7 @@ export class MicroRouter extends MicroPlugin {
 
     Micro.logger.info('initializing Http server');
     let rootPath = URL.Clean((this._config.kebabCase ? toKebabCasing(Micro.service.constructor.name) : Micro.service.constructor.name as string).toLowerCase() + '/v' + this._config.version);
+
     for (let config of serviceRoutesRepo) {
       let currService = Micro.getCurrentService(config.service) || Micro.service;
       let pathPrefix = '';
@@ -347,8 +338,10 @@ export class MicroRouter extends MicroPlugin {
       };
 
       for (let hook of route.hooks)
-        if (Micro.service[hook] === undefined) Micro.logger.warn(`Hook not found: ${hook}!`);
-        else if (typeof Micro.service[hook] !== 'function') Micro.logger.warn(`invalid hook type: ${hook}!`);
+        if (currService[hook] === undefined && Micro.service[hook] === undefined)
+          Micro.logger.warn(`Hook not found: ${hook}!`);
+        else if (typeof currService[hook] !== 'function' && typeof Micro.service[hook] === 'function')
+          Micro.logger.warn(`invalid hook type: ${hook}!`);
 
       serviceRoutes[route.method] = serviceRoutes[route.method] || {};
       serviceRoutes[route.method][route.path] = route;
@@ -369,14 +362,17 @@ export class MicroRouter extends MicroPlugin {
 
         response.serverResponse.on("error", err => {
           Micro.logger.error(err, `method: ${request.method}`);
-          if (typeof Micro.service.onRouteError === "function") Micro.service.onError(request, response, err);
+          if (typeof Micro.service.onRouteError === "function")
+            Micro.service.onError(request, response, err);
         });
 
-        if (<any>request.method === 'OPTIONS') return response.status(+this._config.cors['response-code']).end();
+        if (<any>request.method === 'OPTIONS')
+          return response.status(+this._config.cors['response-code']).end();
 
         if (typeof Micro.service.onRequest === "function") {
           let ret = Micro.service.onRequest(request, response);
-          if (ret && ret.then !== undefined) await ret;
+          if (ret && ret.then !== undefined)
+            await ret;
         }
 
         if (this.shallBeIgnored(request.url, request.method)) {
@@ -387,21 +383,28 @@ export class MicroRouter extends MicroPlugin {
         let { route, params } = findRoute(request.url, request.method);
 
         if (!route) {
-          if (typeof Micro.service.on404 === "function") return Micro.service.on404(request, response);
+          if (typeof Micro.service.on404 === "function")
+            return Micro.service.on404(request, response);
+
           return response.status(CODES.NOT_FOUND).end();
         }
 
-        if (route.cors) response.setHeaders(route.cors);
+        if (route.cors)
+          response.setHeaders(route.cors);
 
         let currentService = route.service;
 
         if (currentService !== Micro.service && typeof currentService.onRequest === "function") {
           let ret = currentService.onRequest(request, response);
-          if (ret && ret.then !== undefined) await ret;
+
+          if (ret && ret.then !== undefined)
+            await ret;
         }
 
         if (typeof currentService[route.key] !== "function") {
-          if (typeof currentService.on404 === "function") return currentService.on404(request, response);
+          if (typeof currentService.on404 === "function")
+            return currentService.on404(request, response);
+
           return response.status(CODES.NOT_FOUND).end();
         }
 
@@ -425,14 +428,24 @@ export class MicroRouter extends MicroPlugin {
 
           if (route.processBody) {
             let data: any;
-            try { data = await processBody(request.msg); }
-            catch (e) { return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e }); }
+
+            try { 
+              data = await processBody(request.msg);
+            } catch (e) {
+              return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e });
+            }
 
             if (route.accepts.indexOf('application/json') > -1)
-              try { request.body = JSON.parse(data); } catch (e) { return response.status(CODES.BAD_REQUEST).json(e); }
+              try {
+                request.body = JSON.parse(data);
+              } catch (e) {
+                return response.status(CODES.BAD_REQUEST).json(e);
+              }
+
             else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
               request.body = URL.QueryToObject(data);
-            else request.body = data;
+            else
+              request.body = data;
           }
         }
 
@@ -441,22 +454,30 @@ export class MicroRouter extends MicroPlugin {
           try {
             for (let hook of route.hooks) {
               // check if response already sent, that happens when hook timeout
-              if (response.ended) return;
+              if (response.ended)
+                return;
 
               currHook = hook;
 
-              if (currentService[hook] === undefined && Micro.service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
-              else if (typeof currentService[hook] !== 'function' && typeof Micro.service[hook] !== "function") return Micro.logger.warn(`invalid hook type: ${hook}!`);
+              if (currentService[hook] === undefined && Micro.service[hook] === undefined)
+                return Micro.logger.warn(`Hook not found: ${hook}!`);
+              else if (typeof currentService[hook] !== 'function' && typeof Micro.service[hook] !== "function")
+                return Micro.logger.warn(`invalid hook type: ${hook}!`);
 
-              let ret = currentService[hook] ? currentService[hook](request, response, route.key) : Micro.service[hook](request, response, route.key);
+              let ret = currentService[hook]
+                ? currentService[hook](request, response, route.key)
+                : Micro.service[hook](request, response, route.key);
+
               if (ret) {
                 if (typeof ret.then === "function") {
                   let passed = await ret;
+
                   if (!passed) {
                     if (!response.ended) {
                       Micro.logger.warn('unhandled async hook response: ' + hook);
                       response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
                     }
+
                     return;
                   }
                 }
@@ -466,6 +487,7 @@ export class MicroRouter extends MicroPlugin {
                   Micro.logger.warn('unhandled hook response: ' + hook);
                   response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
                 }
+
                 return;
               }
             }
@@ -475,8 +497,12 @@ export class MicroRouter extends MicroPlugin {
           }
         }
 
-        try { currentService[route.key](request, response); }
-        catch (e) { Micro.logger.error(e, `route: ${route.key}`); }
+        try {
+          currentService[route.key](request, response);
+        } catch (e) {
+          Micro.logger.error(e, `route: ${route.key}`);
+        }
+        
       } catch (error) {
         Micro.logger.error(error);
       }
@@ -488,10 +514,12 @@ export class MicroRouter extends MicroPlugin {
     server.listen(this._config.port, this._config.host, () => {
       Micro.logger.info(`running http server on port: ${this._config.port}, pid: ${process.pid}`);
 
-      if (typeof Micro.service.onListening === "function") Micro.service.onListening();
+      if (typeof Micro.service.onListening === "function")
+        Micro.service.onListening();
 
       for (let service of Micro.subServices)
-        if (typeof service.onListening === "function") service.onListening();
+        if (typeof service.onListening === "function")
+          service.onListening();
     });
 
     this.ready = true;
