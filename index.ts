@@ -38,12 +38,12 @@ export interface RouterEvents {
   onRouteError?: (req: Request, res: Response, err: any) => void;
 }
 
-const DEFAULT_CORS: IncomingHttpHeaders & { 'success-code'?: string } = {
+const DEFAULT_CORS: IncomingHttpHeaders & { 'response-code'?: string } = {
   'access-control-allow-methods': "GET,HEAD,OPTIONS,PUT,PATCH,POST,DELETE",
   'access-control-allow-origin': "*",
   'access-control-allow-headers': "*",
   'Access-Control-Allow-Credentials': 'false',
-  'success-code': '204'
+  'response-code': '204'
 }
 
 /** Route Config interface */
