@@ -99,14 +99,14 @@ export function ROUTE(config: RouteConfig = {}) {
  * Request wrapper for original node incoming message
  * include url and body parsing
  */
-export class Request<T = any> {
+export class Request<T = any, U = any> {
   private _body: T = null;
   private _params: { [key: string]: string | string[] } = null;
   readonly url: URL;
   readonly method: HttpMethod;
   readonly locals: { [key: string]: any } = {};
   readonly cookies: { [key: string]: string } = {};
-  auth?: any;
+  auth?: U;
 
   constructor(public readonly msg: IncomingMessage) {
     this.url = new URL('http://' + this.msg.headers.host + this.msg.url);
@@ -310,6 +310,166 @@ export class MicroRouter extends MicroPlugin {
     return false;
   }
 
+  private async requestHandler(httpRequest: http.IncomingMessage, httpResponse: http.ServerResponse) {
+    try {
+      let request = new Request(httpRequest);
+      let response = new Response(request, httpResponse, this._config.cors);
+      let timer: NodeJS.Timeout = null;
+
+      request.msg.on('close', () => {
+        clearTimeout(timer);
+      });
+
+      Micro.logger.info(`${request.method} ${request.url.pathname}`);
+
+      response.serverResponse.on("error", err => {
+        Micro.logger.error(err, `method: ${request.method}`);
+        if (typeof Micro.service.onRouteError === "function")
+          Micro.service.onError(request, response, err);
+      });
+
+      if (<any>request.method === 'OPTIONS')
+        return response.status(+this._config.cors['response-code']).end();
+
+      if (typeof Micro.service.onRequest === "function") {
+        let ret = Micro.service.onRequest(request, response);
+        if (ret && ret.then !== undefined)
+          await ret;
+      }
+
+      if (this.shallBeIgnored(request.url, request.method)) {
+        Micro.logger.info(`route ignored: ${request.method} ${request.url.pathname}`);
+        return;
+      }
+
+      let { route, params } = findRoute(request.url, request.method);
+
+      if (!route) {
+        if (typeof Micro.service.on404 === "function")
+          return Micro.service.on404(request, response);
+
+        return response.status(CODES.NOT_FOUND).end();
+      }
+
+      if (route.cors)
+        response.setHeaders(route.cors);
+
+      let currentService = route.service;
+
+      if (currentService !== Micro.service && typeof currentService.onRequest === "function") {
+        let ret = currentService.onRequest(request, response);
+
+        if (ret && ret.then !== undefined)
+          await ret;
+      }
+
+      if (typeof currentService[route.key] !== "function") {
+        if (typeof currentService.on404 === "function")
+          return currentService.on404(request, response);
+
+        return response.status(CODES.NOT_FOUND).end();
+      }
+
+      timer = setTimeout(() => {
+        response.status(CODES.REQUEST_TIMEOUT).end('request time out');
+      }, route.timeout);
+
+      request.params = params;
+
+      let queryStr = request.url.href.split('?')[1];
+      if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
+        return response.status(CODES.PAYLOAD_TOO_LARGE).end('request query exceeded length limit');
+
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1 && +request.msg.headers['content-length'] > 0) {
+        // validate request body size
+        if (route.bodyQuota > 0 && route.bodyQuota < +request.msg.headers['content-length'])
+          return response.status(CODES.PAYLOAD_TOO_LARGE).end('request body exceeded size limit');
+
+        if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
+          return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
+
+        if (route.processBody) {
+          let data: any;
+
+          try { 
+            data = await processBody(request.msg);
+          } catch (e) {
+            return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e });
+          }
+
+          if (route.accepts.indexOf('application/json') > -1)
+            try {
+              request.body = JSON.parse(data);
+            } catch (e) {
+              return response.status(CODES.BAD_REQUEST).json(e);
+            }
+
+          else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
+            request.body = URL.QueryToObject(data);
+          else
+            request.body = data;
+        }
+      }
+
+      if (route.hooks && route.hooks.length > 0) {
+        let currHook: string;
+        try {
+          for (let hook of route.hooks) {
+            // check if response already sent, that happens when hook timeout
+            if (response.ended)
+              return;
+
+            currHook = hook;
+
+            if (currentService[hook] === undefined && Micro.service[hook] === undefined)
+              return Micro.logger.warn(`Hook not found: ${hook}!`);
+            else if (typeof currentService[hook] !== 'function' && typeof Micro.service[hook] !== "function")
+              return Micro.logger.warn(`invalid hook type: ${hook}!`);
+
+            let ret = currentService[hook]
+              ? currentService[hook](request, response, route.key)
+              : Micro.service[hook](request, response, route.key);
+
+            if (ret) {
+              if (typeof ret.then === "function") {
+                let passed = await ret;
+
+                if (!passed) {
+                  if (!response.ended) {
+                    Micro.logger.warn('unhandled async hook response: ' + hook);
+                    response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
+                  }
+
+                  return;
+                }
+              }
+
+            } else {
+              if (!response.ended) {
+                Micro.logger.warn('unhandled hook response: ' + hook);
+                response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
+              }
+
+              return;
+            }
+          }
+        } catch (e) {
+          Micro.logger.error(e, 'hook unhandled error: ' + currHook);
+          response.status(CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
+        }
+      }
+
+      try {
+        currentService[route.key](request, response);
+      } catch (e) {
+        Micro.logger.error(e, `route: ${route.key}`);
+      }
+      
+    } catch (error) {
+      Micro.logger.error(error);
+    }
+  }
+
   init() {
     if (MicroRouter.server) return;
 
@@ -348,165 +508,7 @@ export class MicroRouter extends MicroPlugin {
       Micro.logger.info(`route: ${route.path} - ${route.method} initialized`);
     }
 
-    let server = http.createServer(async (httpRequest, httpResponse) => {
-      try {
-        let request = new Request(httpRequest);
-        let response = new Response(request, httpResponse, this._config.cors);
-        let timer: NodeJS.Timeout = null;
-
-        request.msg.on('close', () => {
-          clearTimeout(timer);
-        });
-
-        Micro.logger.info(`${request.method} ${request.url.pathname}`);
-
-        response.serverResponse.on("error", err => {
-          Micro.logger.error(err, `method: ${request.method}`);
-          if (typeof Micro.service.onRouteError === "function")
-            Micro.service.onError(request, response, err);
-        });
-
-        if (<any>request.method === 'OPTIONS')
-          return response.status(+this._config.cors['response-code']).end();
-
-        if (typeof Micro.service.onRequest === "function") {
-          let ret = Micro.service.onRequest(request, response);
-          if (ret && ret.then !== undefined)
-            await ret;
-        }
-
-        if (this.shallBeIgnored(request.url, request.method)) {
-          Micro.logger.info(`route ignored: ${request.method} ${request.url.pathname}`);
-          return;
-        }
-
-        let { route, params } = findRoute(request.url, request.method);
-
-        if (!route) {
-          if (typeof Micro.service.on404 === "function")
-            return Micro.service.on404(request, response);
-
-          return response.status(CODES.NOT_FOUND).end();
-        }
-
-        if (route.cors)
-          response.setHeaders(route.cors);
-
-        let currentService = route.service;
-
-        if (currentService !== Micro.service && typeof currentService.onRequest === "function") {
-          let ret = currentService.onRequest(request, response);
-
-          if (ret && ret.then !== undefined)
-            await ret;
-        }
-
-        if (typeof currentService[route.key] !== "function") {
-          if (typeof currentService.on404 === "function")
-            return currentService.on404(request, response);
-
-          return response.status(CODES.NOT_FOUND).end();
-        }
-
-        timer = setTimeout(() => {
-          response.status(CODES.REQUEST_TIMEOUT).end('request time out');
-        }, route.timeout);
-
-        request.params = params;
-
-        let queryStr = request.url.href.split('?')[1];
-        if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
-          return response.status(CODES.PAYLOAD_TOO_LARGE).end('request query exceeded length limit');
-
-        if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1 && +request.msg.headers['content-length'] > 0) {
-          // validate request body size
-          if (route.bodyQuota > 0 && route.bodyQuota < +request.msg.headers['content-length'])
-            return response.status(CODES.PAYLOAD_TOO_LARGE).end('request body exceeded size limit');
-
-          if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
-            return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
-
-          if (route.processBody) {
-            let data: any;
-
-            try { 
-              data = await processBody(request.msg);
-            } catch (e) {
-              return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e });
-            }
-
-            if (route.accepts.indexOf('application/json') > -1)
-              try {
-                request.body = JSON.parse(data);
-              } catch (e) {
-                return response.status(CODES.BAD_REQUEST).json(e);
-              }
-
-            else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
-              request.body = URL.QueryToObject(data);
-            else
-              request.body = data;
-          }
-        }
-
-        if (route.hooks && route.hooks.length > 0) {
-          let currHook: string;
-          try {
-            for (let hook of route.hooks) {
-              // check if response already sent, that happens when hook timeout
-              if (response.ended)
-                return;
-
-              currHook = hook;
-
-              if (currentService[hook] === undefined && Micro.service[hook] === undefined)
-                return Micro.logger.warn(`Hook not found: ${hook}!`);
-              else if (typeof currentService[hook] !== 'function' && typeof Micro.service[hook] !== "function")
-                return Micro.logger.warn(`invalid hook type: ${hook}!`);
-
-              let ret = currentService[hook]
-                ? currentService[hook](request, response, route.key)
-                : Micro.service[hook](request, response, route.key);
-
-              if (ret) {
-                if (typeof ret.then === "function") {
-                  let passed = await ret;
-
-                  if (!passed) {
-                    if (!response.ended) {
-                      Micro.logger.warn('unhandled async hook response: ' + hook);
-                      response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
-                    }
-
-                    return;
-                  }
-                }
-
-              } else {
-                if (!response.ended) {
-                  Micro.logger.warn('unhandled hook response: ' + hook);
-                  response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
-                }
-
-                return;
-              }
-            }
-          } catch (e) {
-            Micro.logger.error(e, 'hook unhandled error: ' + currHook);
-            response.status(CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
-          }
-        }
-
-        try {
-          currentService[route.key](request, response);
-        } catch (e) {
-          Micro.logger.error(e, `route: ${route.key}`);
-        }
-        
-      } catch (error) {
-        Micro.logger.error(error);
-      }
-    });
+    let server = http.createServer((req, res) => this.requestHandler(req, res));
 
     MicroRouter.server = server;
     Micro.logger.info('http server initialized successfully');
