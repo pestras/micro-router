@@ -175,9 +175,14 @@ export class Response {
   end(chunck: any, cb?: () => void): void;
   end(chunck: any, encoding: string, cb?: () => void): void;
   end(chunck?: any | (() => void), encoding?: string | (() => void), cb?: () => void) {
-    if (this._ended) return Micro.logger.warn('http response already sent');
-    if (this.serverResponse.statusCode < 500) Micro.logger.info(`response ${this.serverResponse.statusCode} ${this.request.url.pathname}`);
-    else Micro.logger.error(new Error(`response ${this.serverResponse.statusCode} ${this.request.url}`));
+    if (this._ended)
+      return Micro.logger.warn('attempt to end response which is already ended!');
+
+    if (this.serverResponse.statusCode < 500)
+      Micro.logger.info(`response ${this.serverResponse.statusCode} ${this.request.url.pathname}`);
+    else
+      Micro.logger.error(new Error(`response ${this.serverResponse.statusCode} ${this.request.url}`));
+
     this._ended = true;
     this.serverResponse.end(...arguments);
   }
@@ -218,22 +223,36 @@ export class Response {
   }
 
   json(data?: any) {
+    if (this._ended)
+      return Micro.logger.warn("attempt to send json after response ended!");
+
     this.serverResponse.setHeader('Content-Type', 'application/json; charset=utf-8');
     !!data ? this.end(JSON.stringify(data)) : this.end("");
   }
 
   status(code: CODES) {
+    if (this._ended) {
+      Micro.logger.warn("attempt to change response status after it is ended!");
+      return this;
+    }
+
     this.serverResponse.statusCode = code;
     return this;
   }
 
   redirect(url: string, code = CODES.MULTIPLE_CHOICES) {
+    if (this._ended)
+      return Micro.logger.warn("attempt to redirect after response ended!");
+
     this.serverResponse.statusCode = code;
     this.serverResponse.setHeader("Location", url);
     this.end();
   }
 
   sendFile(path: string, mime: string) {
+    if (this._ended)
+      return Micro.logger.warn("attempt to send file after response ended!");
+
     let stat = statSync(path);
 
     this.serverResponse.writeHead(CODES.OK, {
