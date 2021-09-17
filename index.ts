@@ -524,7 +524,7 @@ export class MicroRouter extends MicroPlugin {
       for (let hook of route.hooks)
         if (currService[hook] === undefined && Micro.service[hook] === undefined)
           Micro.logger.warn(`Hook not found: ${hook}!`);
-        else if (typeof currService[hook] !== 'function' && typeof Micro.service[hook] === 'function')
+        else if (typeof currService[hook] !== 'function' && typeof Micro.service[hook] !== 'function')
           Micro.logger.warn(`invalid hook type: ${hook}!`);
 
       serviceRoutes[route.method] = serviceRoutes[route.method] || {};
