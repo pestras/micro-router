@@ -1,12 +1,17 @@
+// Copyright (c) 2021 Pestras
+// 
+// This software is released under the MIT License.
+// https://opensource.org/licenses/MIT
+
 import * as http from 'http';
 import { MicroPlugin, Micro } from '@pestras/micro';
 import { IncomingMessage, ServerResponse, IncomingHttpHeaders } from 'http';
 import { URL } from '@pestras/toolbox/url';
 import { PathPattern } from '@pestras/toolbox/url/path-pattern';
-import { CODES } from '@pestras/toolbox/fetch/codes';
+import { HTTP_CODES } from '@pestras/toolbox/codes';
 import { statSync, createReadStream } from 'fs';
 
-export { CODES };
+export { HTTP_CODES };
 
 export type CORS = IncomingHttpHeaders & { 'response-code'?: string };
 
@@ -230,7 +235,7 @@ export class Response {
     !!data ? this.end(JSON.stringify(data)) : this.end("");
   }
 
-  status(code: CODES) {
+  status(code: HTTP_CODES) {
     if (this._ended) {
       Micro.logger.warn("attempt to change response status after it is ended!");
       return this;
@@ -240,7 +245,7 @@ export class Response {
     return this;
   }
 
-  redirect(url: string, code = CODES.MULTIPLE_CHOICES) {
+  redirect(url: string, code = HTTP_CODES.MULTIPLE_CHOICES) {
     if (this._ended)
       return Micro.logger.warn("attempt to redirect after response ended!");
 
@@ -255,7 +260,7 @@ export class Response {
 
     let stat = statSync(path);
 
-    this.serverResponse.writeHead(CODES.OK, {
+    this.serverResponse.writeHead(HTTP_CODES.OK, {
       "Content_Type": mime,
       "Content-Length": stat.size 
     });
@@ -367,7 +372,7 @@ export class MicroRouter extends MicroPlugin {
         if (typeof Micro.service.on404 === "function")
           return Micro.service.on404(request, response);
 
-        return response.status(CODES.NOT_FOUND).end();
+        return response.status(HTTP_CODES.NOT_FOUND).end();
       }
 
       if (route.cors)
@@ -386,26 +391,26 @@ export class MicroRouter extends MicroPlugin {
         if (typeof currentService.on404 === "function")
           return currentService.on404(request, response);
 
-        return response.status(CODES.NOT_FOUND).end();
+        return response.status(HTTP_CODES.NOT_FOUND).end();
       }
 
       timer = setTimeout(() => {
-        response.status(CODES.REQUEST_TIMEOUT).end('request time out');
+        response.status(HTTP_CODES.REQUEST_TIMEOUT).end('request time out');
       }, route.timeout);
 
       request.params = params;
 
       let queryStr = request.url.href.split('?')[1];
       if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
-        return response.status(CODES.PAYLOAD_TOO_LARGE).end('request query exceeded length limit');
+        return response.status(HTTP_CODES.PAYLOAD_TOO_LARGE).end('request query exceeded length limit');
 
       if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1 && +request.msg.headers['content-length'] > 0) {
         // validate request body size
         if (route.bodyQuota > 0 && route.bodyQuota < +request.msg.headers['content-length'])
-          return response.status(CODES.PAYLOAD_TOO_LARGE).end('request body exceeded size limit');
+          return response.status(HTTP_CODES.PAYLOAD_TOO_LARGE).end('request body exceeded size limit');
 
         if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
-          return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
+          return response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
 
         if (route.processBody) {
           let data: any;
@@ -413,14 +418,14 @@ export class MicroRouter extends MicroPlugin {
           try { 
             data = await processBody(request.msg);
           } catch (e) {
-            return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e });
+            return response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e });
           }
 
           if (route.accepts.indexOf('application/json') > -1)
             try {
               request.body = JSON.parse(data);
             } catch (e) {
-              return response.status(CODES.BAD_REQUEST).json(e);
+              return response.status(HTTP_CODES.BAD_REQUEST).json(e);
             }
 
           else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
@@ -456,7 +461,7 @@ export class MicroRouter extends MicroPlugin {
                 if (!passed) {
                   if (!response.ended) {
                     Micro.logger.warn('unhandled async hook response: ' + hook);
-                    response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
+                    response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'badRequest' });
                   }
 
                   return;
@@ -466,7 +471,7 @@ export class MicroRouter extends MicroPlugin {
             } else {
               if (!response.ended) {
                 Micro.logger.warn('unhandled hook response: ' + hook);
-                response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
+                response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'badRequest' });
               }
 
               return;
@@ -474,7 +479,7 @@ export class MicroRouter extends MicroPlugin {
           }
         } catch (e) {
           Micro.logger.error(e, 'hook unhandled error: ' + currHook);
-          response.status(CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
+          response.status(HTTP_CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
         }
       }
 
