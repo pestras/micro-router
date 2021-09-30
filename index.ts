@@ -9,6 +9,7 @@ import { IncomingMessage, ServerResponse, IncomingHttpHeaders } from 'http';
 import { URL } from '@pestras/toolbox/url';
 import { PathPattern } from '@pestras/toolbox/url/path-pattern';
 import { HTTP_CODES } from '@pestras/toolbox/codes';
+import { omit } from '@pestras/toolbox/object/omit';
 import { statSync, createReadStream } from 'fs';
 
 export { HTTP_CODES };
@@ -100,18 +101,45 @@ export function ROUTE(config: RouteConfig = {}) {
   }
 }
 
+export interface IParams {
+  [key: string]: string;
+}
+
+export class Params<T extends IParams> {
+  private _params: T = <any>{};
+  private _rest: string[] = [];
+  private _init = false;
+
+  get(param: keyof T) {
+    return this._params[param] as string;
+  }
+
+  get rest() {
+    return this._rest;
+  }
+
+  init(params: T, rest?: string[]) {
+    if (this._init)
+      throw "unable to reassign request params";
+
+    this._params = params;
+    this._rest = rest || [];
+    this._init = true;
+  }
+}
+
 /**
  * Request wrapper for original node incoming message
  * include url and body parsing
  */
-export class Request<T = any, U = any> {
+export class Request<T = any, U extends IParams = IParams, V = any> {
   private _body: T = null;
-  private _params: { [key: string]: string | string[] } = null;
+  readonly params = new Params<U>();
   readonly url: URL;
   readonly method: HttpMethod;
   readonly locals: { [key: string]: any } = {};
   readonly cookies: { [key: string]: string } = {};
-  auth?: U;
+  auth?: V;
 
   constructor(public readonly msg: IncomingMessage) {
     this.url = new URL('http://' + this.msg.headers.host + this.msg.url);
@@ -128,12 +156,6 @@ export class Request<T = any, U = any> {
   set body(value: T) {
     if (!this._body) this._body = value;
     else throw "unable to reassign request body";
-  }
-
-  get params() { return this._params; }
-  set params(value: { [key: string]: string | string[] }) {
-    if (!this._params) this._params = value;
-    else throw "unable to reassign request params";
   }
 
   header(key: string) { return this.msg.headers[key.toLowerCase()]; }
@@ -222,7 +244,7 @@ export class Response {
         }
       }
     }
-    
+
     this.serverResponse.setHeader('Set-Cookie', all);
     return this;
   }
@@ -262,7 +284,7 @@ export class Response {
 
     this.serverResponse.writeHead(HTTP_CODES.OK, {
       "Content_Type": mime,
-      "Content-Length": stat.size 
+      "Content-Length": stat.size
     });
 
     let readStream = createReadStream(path);
@@ -398,7 +420,7 @@ export class MicroRouter extends MicroPlugin {
         response.status(HTTP_CODES.REQUEST_TIMEOUT).end('request time out');
       }, route.timeout);
 
-      request.params = params;
+      request.params.init(omit(params, ['*']), params['*'] as string[] || []);
 
       let queryStr = request.url.href.split('?')[1];
       if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
@@ -415,7 +437,7 @@ export class MicroRouter extends MicroPlugin {
         if (route.processBody) {
           let data: any;
 
-          try { 
+          try {
             data = await processBody(request.msg);
           } catch (e) {
             return response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e });
@@ -488,7 +510,7 @@ export class MicroRouter extends MicroPlugin {
       } catch (e) {
         Micro.logger.error(e, `route: ${route.key}`);
       }
-      
+
     } catch (error) {
       Micro.logger.error(error);
     }
