@@ -337,8 +337,6 @@ export class MicroRouter extends MicroPlugin {
       for (let route of this._config.ignoredRoutes)
         route[0] = route[0].includes('*') ? '*' : route[0].replace(/\s?/g, '').toUpperCase();
     } else this._config.ignoredRoutes || [];
-
-    Micro.store.MicroRouterPlugin = <any>{};
   }
 
   private shallBeIgnored(url: URL, method: HttpMethod) {

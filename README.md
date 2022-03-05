@@ -20,7 +20,7 @@ $ git clone https://github.com/pestras/pestras-micro-template
 import { SERVICE, Micro } from '@pestras/micro';
 import { MicroRouter } from '@pestras/micro-router;
 
-Micro.plugin(new MicroRouter());
+Micro.plugins(new MicroRouter());
 
 @SERVICE()
 class Test {}
@@ -43,7 +43,7 @@ ignoredRoutes | [string, string][] | [] | list of routes **[comma separated http
 import { SERVICE, Micro } from '@pestras/micro';
 import { MicroRouter } from '@pestras/micro-router';
 
-Micro.plugin(new MicroRouter({ version: "1", port: 3200 }));
+Micro.plugins(new MicroRouter({ version: "1", port: 3200 }));
 
 @SERVICE()
 class Test {}
@@ -66,7 +66,7 @@ Default cors options are:
 ```
 
 ```ts
-Micro.plugin(new MicroRouter({ 
+Micro.plugins(new MicroRouter({ 
   version: "1",
   port: 3200,
   cors: {
@@ -99,7 +99,7 @@ cors | IncomingHttpHeaders & { 'success-code'?: string } | null | CORS for prefl
 import { Micro, SERVICE } from '@pestras/micro';
 import { MicroRouter, Request, Response, ROUTER_HOOK, ROUTE, CODES } from '@pestras/micro-router';
 
-Micro.plugin(new MicroRouter());
+Micro.plugins(new MicroRouter());
 
 @SERVICE()
 class Articles {
@@ -235,7 +235,7 @@ Hooks are called before the actual request handler, they are helpful for code se
 import { Micro, SERVICE } from '@pestras/micro';
 import { MicroRouter, Request, Response, ROUTER_HOOK, ROUTE, CODES } from '@pestras/micro-router';
 
-Micro.plugin(new MicroRouter());
+Micro.plugins(new MicroRouter());
 
 @SERVICE()
 class Test {
@@ -299,7 +299,7 @@ import { Micro, SERVICE } from '@pestras/micro';
 import { MicroRouter, ROUTE_HOOK, ROUTE } from '@pestras/micro-router';
 import { Comments } from './comments.service'
 
-Micro.plugin(new MicroRouter());
+Micro.plugins(new MicroRouter());
 
 @SERVICE()
 class Articles {
