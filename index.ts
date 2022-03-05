@@ -6,10 +6,10 @@
 import * as http from 'http';
 import { MicroPlugin, Micro } from '@pestras/micro';
 import { IncomingMessage, ServerResponse, IncomingHttpHeaders } from 'http';
-import { URL } from '@pestras/toolbox/url';
-import { PathPattern } from '@pestras/toolbox/url/path-pattern';
-import { HTTP_CODES } from '@pestras/toolbox/codes';
-import { omit } from '@pestras/toolbox/object/omit';
+import { URL } from './url';
+import { PathPattern } from './url/path-pattern';
+import { HTTP_CODES } from './codes';
+import { omit } from './util/omit';
 import { statSync, createReadStream } from 'fs';
 
 export { HTTP_CODES };
@@ -157,8 +157,6 @@ export class Request<T = any, U extends IParams = IParams, V = any> {
     if (!this._body) this._body = value;
     else throw "unable to reassign request body";
   }
-
-  header(key: string) { return this.msg.headers[key.toLowerCase()]; }
 
   get headers() { return this.msg.headers; }
 }
@@ -431,7 +429,7 @@ export class MicroRouter extends MicroPlugin {
         if (route.bodyQuota > 0 && route.bodyQuota < +request.msg.headers['content-length'])
           return response.status(HTTP_CODES.PAYLOAD_TOO_LARGE).end('request body exceeded size limit');
 
-        if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
+        if (route.accepts.indexOf((<string>request.headers['content-type']).split(';')[0]) === -1)
           return response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
 
         if (route.processBody) {
@@ -499,7 +497,7 @@ export class MicroRouter extends MicroPlugin {
               return;
             }
           }
-        } catch (e) {
+        } catch (e: any) {
           Micro.logger.error(e, 'hook unhandled error: ' + currHook);
           response.status(HTTP_CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
         }
@@ -507,11 +505,11 @@ export class MicroRouter extends MicroPlugin {
 
       try {
         currentService[route.key](request, response);
-      } catch (e) {
+      } catch (e: any) {
         Micro.logger.error(e, `route: ${route.key}`);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       Micro.logger.error(error);
     }
   }

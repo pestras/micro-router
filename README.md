@@ -28,7 +28,32 @@ class Test {}
 Micro.start(Test);
 ```
 
-**MicroRouter** class accepts a single optional argument **cors**.
+## Router Configuration
+
+Name        | Type     | Defualt         | Description
+----        | -----    | ------          | -----
+version     | string   | 0               | Current verion of our service, versions are used on rest resource **/someservice/v1/...**.
+kebabCase   | boolean  | true            | convert class name to kebek casing as **ArticlesService** -> **articles-service** default is **articlesservice**
+port        | number   | 3000            | Http server listening port.   
+host        | string   | 0.0.0.0         | Http server host.
+cors | IncomingHttpHeaders & { 'success-code'?: string } | [see cors](#cors) | CORS for preflights requests
+ignoredRoutes | [string, string][] | [] | list of routes **[comma separated http methods or use '*', pathPattern]** that should be completely ignored by the plugin
+
+```ts
+import { SERVICE, Micro } from '@pestras/micro';
+import { MicroRouter } from '@pestras/micro-router';
+
+Micro.plugin(new MicroRouter({ version: "1", port: 3200 }));
+
+@SERVICE()
+class Test {}
+
+Micro.start(Test);
+```
+
+## CORS
+
+**MicroRouter** class accepts **cors** reconfiguration.
 
 Default cors options are:
 
@@ -40,27 +65,15 @@ Default cors options are:
 'success-code': '204'
 ```
 
-## Router Configuration
-
-Name        | Type     | Defualt         | Description
-----        | -----    | ------          | -----
-version     | string   | 0               | Current verion of our service, versions are used on rest resource */someservice/v1/...*.
-kebabCase   | boolean  | true            | convert class name to kebekCasing as *ArticlesQueryAPI* -> *articles-query-api*
-port        | number   | 3000            | Http server listening port.   
-host        | string   | 0.0.0.0         | Http server host.
-cors | IncomingHttpHeaders & { 'success-code'?: string } | [see cors](#cors) | CORS for preflights requests
-ignoredRoutes | [string, string][] | [] | list of routes **[comma separated http methods or use '*', pathPattern]** that should be completely ignored by the plugin
-
 ```ts
-import { SERVICE, Micro } from '@pestras/micro';
-import { MicroRouter } from '@pestras/micro-router;
-
-Micro.plugin(new MicroRouter({ version: "1", port: "3200" }));
-
-@SERVICE()
-class Test {}
-
-Micro.start(Test);
+Micro.plugin(new MicroRouter({ 
+  version: "1",
+  port: 3200,
+  cors: {
+    "access-control-allow-origin": "somewhere.com",
+    "success-code": "200" // string value
+  }
+}));
 ```
 
 ## ROUTE DECORATOR
@@ -116,7 +129,6 @@ params | { [key: string]: string \| string[] } | includes route path params valu
 body | any |
 auth | any | useful to save some auth value passed from 'auth' hook for instance.
 headers | IncomingHttpHeaders | return all current request headers.
-header | (key: string) => string | method to get specific request header value
 locals | Object | to set any additional data passed between hooks and route handler
 cookies | {[key: string]: string} | holds all incoming message cookies key value pairs
 msg | NodeJS.IncomingMessage | 
