@@ -1,6 +1,6 @@
 {
   "name": "@pestras/micro-router",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "description": "pestres microservice plugin for rest services support",
   "main": "index.js",
   "types": "index.ts",

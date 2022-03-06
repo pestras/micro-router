@@ -97,7 +97,7 @@ cors | IncomingHttpHeaders & { 'success-code'?: string } | null | CORS for prefl
 
 ```ts
 import { Micro, SERVICE } from '@pestras/micro';
-import { MicroRouter, Request, Response, ROUTER_HOOK, ROUTE, CODES } from '@pestras/micro-router';
+import { MicroRouter, Request, Response, ROUTER_HOOK, ROUTE } from '@pestras/micro-router';
 
 Micro.plugins(new MicroRouter());
 
@@ -229,11 +229,11 @@ Headers can be overwritten using **response.setHeaders** method.
 
 ## ROUTER_HOOK DECORATOR
 
-Hooks are called before the actual request handler, they are helpful for code separation like auth, input validation or whatever logic needed, they could be sync or async returning boolean value.
+Hooks are called before the actual request handler, they are helpful for code separation like auth, input validation or whatever logic needed, they could be sync or async.
 
 ```ts
 import { Micro, SERVICE } from '@pestras/micro';
-import { MicroRouter, Request, Response, ROUTER_HOOK, ROUTE, CODES } from '@pestras/micro-router';
+import { MicroRouter, Request, Response, ROUTER_HOOK, ROUTE, HTTP_CODES, HttpError } from '@pestras/micro-router';
 
 Micro.plugins(new MicroRouter());
 
@@ -247,12 +247,11 @@ class Test {
     // ...
 
     if (!user) {
-      res.status(CODES.UNAUTHORIZED).json({ msg: 'user not authorized' });
+      throw new HttpCode(HTTP_CODES.UNAUTHORIZED, 'user not authorized');
       return false;
     }
   
     req.auth = user;
-    return true
   }
 
   @ROUTE({ hooks: ['auth'] })
@@ -263,8 +262,6 @@ class Test {
 
 Micro.start(Test);
 ```
-
-Hooks should handle the response on failure and returning or resolving to false, otherwise **Route** will check response status and if its not ended, it will consider the situation as a bad request from client that did not pass the hook and responding with BAD_REQUEST code 400.
 
 # Sub Services
 

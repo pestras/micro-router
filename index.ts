@@ -14,6 +14,13 @@ import { statSync, createReadStream } from 'fs';
 
 export { HTTP_CODES };
 
+export class HttpError extends Error {
+
+  constructor(public readonly code: HTTP_CODES, msg = 'httpError') {
+    super(msg);
+  }
+}
+
 export type CORS = IncomingHttpHeaders & { 'response-code'?: string };
 
 export type HttpMethod = 'HEAD' | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -455,6 +462,7 @@ export class MicroRouter extends MicroPlugin {
 
       if (route.hooks && route.hooks.length > 0) {
         let currHook: string;
+        
         try {
           for (let hook of route.hooks) {
             // check if response already sent, that happens when hook timeout
@@ -468,42 +476,29 @@ export class MicroRouter extends MicroPlugin {
             else if (typeof currentService[hook] !== 'function' && typeof Micro.service[hook] !== "function")
               return Micro.logger.warn(`invalid hook type: ${hook}!`);
 
-            let ret = currentService[hook]
+            const ret = currentService[hook]
               ? currentService[hook](request, response, route.key)
               : Micro.service[hook](request, response, route.key);
 
-            if (ret) {
-              if (typeof ret.then === "function") {
-                let passed = await ret;
+            if (typeof ret.then === "function")
+              await ret;
 
-                if (!passed) {
-                  if (!response.ended) {
-                    Micro.logger.warn('unhandled async hook response: ' + hook);
-                    response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'badRequest' });
-                  }
-
-                  return;
-                }
-              }
-
-            } else {
-              if (!response.ended) {
-                Micro.logger.warn('unhandled hook response: ' + hook);
-                response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'badRequest' });
-              }
-
-              return;
-            }
           }
         } catch (e: any) {
+          if (e instanceof HttpError)
+            return response.status(e.code).json({ msg: e.message });
+
           Micro.logger.error(e, 'hook unhandled error: ' + currHook);
-          response.status(HTTP_CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
+          return response.status(HTTP_CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
         }
       }
 
       try {
         currentService[route.key](request, response);
       } catch (e: any) {
+        if (e instanceof HttpError)
+          return response.status(e.code).json({ msg: e.message });
+
         Micro.logger.error(e, `route: ${route.key}`);
       }
 
