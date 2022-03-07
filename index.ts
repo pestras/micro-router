@@ -16,7 +16,7 @@ export { HTTP_CODES };
 
 export class HttpError extends Error {
 
-  constructor(public readonly code: HTTP_CODES, msg = 'httpError') {
+  constructor(public readonly code: HTTP_CODES, msg = HTTP_CODES[code]) {
     super(msg);
   }
 }
@@ -42,6 +42,7 @@ export interface RouterConfig {
   kebabCase?: boolean;
   ignoredRoutes?: [string, string][];
   cors?: CORS;
+  defaultResponse?: HttpError;
 }
 
 export interface RouterEvents {
@@ -189,6 +190,7 @@ function processBody(http: IncomingMessage): Promise<any> {
  */
 export class Response {
   private _ended: boolean;
+  private _timer = Date.now();
 
   constructor(private request: Request, public readonly serverResponse: ServerResponse, cors: CORS) {
     this.serverResponse.setHeader('Cache-Control', 'no-cache,no-store,max-age=0,must-revalidate');
@@ -208,10 +210,10 @@ export class Response {
   end(chunck: any, encoding: string, cb?: () => void): void;
   end(chunck?: any | (() => void), encoding?: string | (() => void), cb?: () => void) {
     if (this._ended)
-      return Micro.logger.warn('attempt to end response which is already ended!');
+      return Micro.logger.debug('attempt to end response which is already ended!');
 
     if (this.serverResponse.statusCode < 500)
-      Micro.logger.info(`response ${this.serverResponse.statusCode} ${this.request.url.pathname}`);
+      Micro.logger.info(`response ${this.serverResponse.statusCode} ${this.request.url.pathname} - T: ${Date.now() - this._timer}ms`);
     else
       Micro.logger.error(new Error(`response ${this.serverResponse.statusCode} ${this.request.url}`));
 
@@ -340,6 +342,8 @@ export class MicroRouter extends MicroPlugin {
     this._config.port = this._config.port || 3000;
     this._config.host = this._config.host || "0.0.0.0";
     this._config.cors = Object.assign(this._config.cors || {}, DEFAULT_CORS);
+    this._config.defaultResponse = config.defaultResponse || new HttpError(HTTP_CODES.UNKNOWN_ERROR, "unknownMsg");
+
     if (this._config.ignoredRoutes) {
       for (let route of this._config.ignoredRoutes)
         route[0] = route[0].includes('*') ? '*' : route[0].replace(/\s?/g, '').toUpperCase();
@@ -462,7 +466,7 @@ export class MicroRouter extends MicroPlugin {
 
       if (route.hooks && route.hooks.length > 0) {
         let currHook: string;
-        
+
         try {
           for (let hook of route.hooks) {
             // check if response already sent, that happens when hook timeout
@@ -489,17 +493,19 @@ export class MicroRouter extends MicroPlugin {
             return response.status(e.code).json({ msg: e.message });
 
           Micro.logger.error(e, 'hook unhandled error: ' + currHook);
-          return response.status(HTTP_CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
+          return response.status(this._config.defaultResponse.code).json({ msg: this._config.defaultResponse.message });
         }
       }
 
       try {
         currentService[route.key](request, response);
+
       } catch (e: any) {
         if (e instanceof HttpError)
           return response.status(e.code).json({ msg: e.message });
 
         Micro.logger.error(e, `route: ${route.key}`);
+        return response.status(this._config.defaultResponse.code).json({ msg: this._config.defaultResponse.message });
       }
 
     } catch (error: any) {

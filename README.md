@@ -38,6 +38,7 @@ port        | number   | 3000            | Http server listening port.
 host        | string   | 0.0.0.0         | Http server host.
 cors | IncomingHttpHeaders & { 'success-code'?: string } | [see cors](#cors) | CORS for preflights requests
 ignoredRoutes | [string, string][] | [] | list of routes **[comma separated http methods or use '*', pathPattern]** that should be completely ignored by the plugin
+defaultResponse | HttpError | 520 | Default response when exceptions thrown with no catch during requests.
 
 ```ts
 import { SERVICE, Micro } from '@pestras/micro';
@@ -226,6 +227,43 @@ Using response.json() will set 'content-type' response header to 'application/js
 ```
 
 Headers can be overwritten using **response.setHeaders** method.
+
+### HttpError
+
+Two ways to respond when exceptions happens:
+
+- Try catch with res.json
+
+```ts
+@ROUTE()
+renameArticle(req: Request, res: Response) {
+  try {
+    nameExists = (await col.countDocument({ name: req.body.name })) > 0;
+
+    if (nameExists)
+      return res.status(HTTP_CODE.CONFLICT).json({ message: 'nameAlreadyExists' });
+
+  } catch (e) {
+    Micro.logger.error(e);
+    return res.status(HTTP_CODE.UNKNWON_ERROR).json({ message: 'unknownError' });
+  }
+}
+```
+
+- Throw HttpError
+
+```ts
+@ROUTE()
+renameArticle(req: Request, res: Response) {
+  let nameExists = (await col.countDocument({ name: req.body.name })) > 0;
+
+  if (nameExists)
+    throw new HttpError(HTTP_CODE.CONFLICT, 'nameAlreadyExists');
+}
+```
+
+Throwing **HttpError** is much easier and cleaner, no need to catch unhandled errors each time, just define your default **HttpError** instance in the **MicroRouter** config and thats it.
+
 
 ## ROUTER_HOOK DECORATOR
 
