@@ -439,7 +439,7 @@ export class MicroRouter extends MicroPlugin {
           return response.status(HTTP_CODES.PAYLOAD_TOO_LARGE).end('request body exceeded size limit');
 
         if (route.accepts.indexOf((<string>request.headers['content-type']).split(';')[0]) === -1)
-          return response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
+          return response.status(HTTP_CODES.BAD_REQUEST).json({ message: 'invalidContentType' });
 
         if (route.processBody) {
           let data: any;
@@ -447,7 +447,7 @@ export class MicroRouter extends MicroPlugin {
           try {
             data = await processBody(request.msg);
           } catch (e) {
-            return response.status(HTTP_CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e });
+            return response.status(HTTP_CODES.BAD_REQUEST).json({ message: 'error processing request data', original: e });
           }
 
           if (route.accepts.indexOf('application/json') > -1)
@@ -490,10 +490,10 @@ export class MicroRouter extends MicroPlugin {
           }
         } catch (e: any) {
           if (e instanceof HttpError)
-            return response.status(e.code).json({ msg: e.message });
+            return response.status(e.code).json({ message: e.message });
 
           Micro.logger.error(e, 'hook unhandled error: ' + currHook);
-          return response.status(this._config.defaultResponse.code).json({ msg: this._config.defaultResponse.message });
+          return response.status(this._config.defaultResponse.code).json({ message: this._config.defaultResponse.message });
         }
       }
 
@@ -502,10 +502,10 @@ export class MicroRouter extends MicroPlugin {
 
       } catch (e: any) {
         if (e instanceof HttpError)
-          return response.status(e.code).json({ msg: e.message });
+          return response.status(e.code).json({ message: e.message });
 
         Micro.logger.error(e, `route: ${route.key}`);
-        return response.status(this._config.defaultResponse.code).json({ msg: this._config.defaultResponse.message });
+        return response.status(this._config.defaultResponse.code).json({ message: this._config.defaultResponse.message });
       }
 
     } catch (error: any) {
